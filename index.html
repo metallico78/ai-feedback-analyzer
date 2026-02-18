@@ -3,250 +3,393 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="AI Feedback Analyzer - Analiza feedback con inteligencia artificial y procesa pagos con Stripe">
-    <meta name="keywords" content="AI, feedback, analysis, OpenAI, Stripe, payment">
+    <meta name="description" content="AI Feedback Analyzer - Analiza feedback con inteligencia artificial">
+    <meta name="keywords" content="AI, feedback, analysis, OpenAI, inteligencia artificial">
     <meta property="og:title" content="AI Feedback Analyzer">
-    <meta property="og:description" content="Analiza feedback con inteligencia artificial">
+    <meta property="og:description" content="Analiza feedback con IA avanzada">
     <meta property="og:type" content="website">
     <title>🤖 AI Feedback Analyzer - Análisis Inteligente</title>
     <script src="https://js.stripe.com/v3/"></script>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
             padding: 20px;
         }
+
+        header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+            padding-top: 20px;
+        }
+
+        header h1 {
+            font-size: 36px;
+            margin-bottom: 8px;
+            font-weight: 700;
+        }
+
+        header p {
+            font-size: 16px;
+            opacity: 0.9;
+            margin-bottom: 8px;
+        }
+
+        .badge {
+            display: inline-block;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            backdrop-filter: blur(10px);
+        }
+
         .container {
+            max-width: 700px;
+            margin: 0 auto;
+        }
+
+        .card {
             background: white;
-            border-radius: 12px;
+            border-radius: 16px;
             box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            max-width: 600px;
-            width: 100%;
             padding: 40px;
-        }
-        h1 {
-            color: #333;
-            margin-bottom: 10px;
-            font-size: 28px;
-        }
-        .subtitle {
-            color: #666;
-            margin-bottom: 30px;
-            font-size: 14px;
-        }
-        .form-group {
             margin-bottom: 20px;
         }
+
+        .form-group {
+            margin-bottom: 24px;
+        }
+
         label {
             display: block;
             color: #333;
             font-weight: 600;
-            margin-bottom: 8px;
+            margin-bottom: 10px;
             font-size: 14px;
         }
-        textarea, input {
+
+        textarea, input[type="text"], input[type="email"], input[type="number"] {
             width: 100%;
-            padding: 12px;
-            border: 1px solid #ddd;
-            border-radius: 8px;
+            padding: 14px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
             font-family: inherit;
             font-size: 14px;
-            transition: border-color 0.3s;
+            transition: all 0.3s;
         }
+
         textarea:focus, input:focus {
             outline: none;
             border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+            box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
         }
+
         textarea {
             resize: vertical;
-            min-height: 100px;
+            min-height: 120px;
         }
+
         .button-group {
             display: flex;
-            gap: 10px;
+            gap: 12px;
             margin-top: 30px;
         }
+
         button {
             flex: 1;
             padding: 14px 24px;
             border: none;
-            border-radius: 8px;
+            border-radius: 10px;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s;
             font-size: 14px;
         }
-        .btn-analyze {
+
+        .btn-primary {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
         }
-        .btn-analyze:hover {
+
+        .btn-primary:hover {
             transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
         }
-        .btn-pay {
+
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+
+        .btn-success {
             background: #10b981;
             color: white;
         }
-        .btn-pay:hover {
+
+        .btn-success:hover {
             background: #059669;
             transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(16, 185, 129, 0.4);
         }
+
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+
         .result {
             margin-top: 30px;
-            padding: 20px;
-            background: #f8f9fa;
-            border-radius: 8px;
-            border-left: 4px solid #667eea;
+            padding: 24px;
+            background: linear-gradient(135deg, #f5f7ff 0%, #f9f5ff 100%);
+            border-radius: 12px;
+            border-left: 5px solid #667eea;
             display: none;
         }
+
         .result.show {
             display: block;
+            animation: slideIn 0.3s ease-out;
         }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
         .result h3 {
-            color: #333;
-            margin-bottom: 10px;
+            color: #667eea;
+            margin-bottom: 12px;
             font-size: 16px;
         }
+
         .result p {
-            color: #666;
-            line-height: 1.6;
+            color: #555;
+            line-height: 1.7;
             font-size: 14px;
+            margin-bottom: 8px;
         }
+
+        .sentiment {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 12px;
+            margin-right: 8px;
+        }
+
+        .sentiment.positive {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .sentiment.negative {
+            background: #fee2e2;
+            color: #7f1d1d;
+        }
+
+        .sentiment.neutral {
+            background: #dbeafe;
+            color: #0c2340;
+        }
+
         .loading {
             display: none;
             text-align: center;
             color: #667eea;
             margin-top: 20px;
         }
+
         .loading.show {
             display: block;
         }
+
         .spinner {
             border: 3px solid #f3f3f3;
             border-top: 3px solid #667eea;
             border-radius: 50%;
-            width: 30px;
-            height: 30px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 10px;
+            width: 40px;
+            height: 40px;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 12px;
         }
+
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+
         .error {
-            background: #fee;
-            color: #c33;
-            padding: 12px;
-            border-radius: 8px;
+            background: #fee2e2;
+            color: #991b1b;
+            padding: 14px 16px;
+            border-radius: 10px;
             margin-bottom: 20px;
             display: none;
             font-size: 14px;
+            border-left: 4px solid #dc2626;
         }
+
         .error.show {
             display: block;
         }
-        .payment-section {
-            margin-top: 30px;
-            padding-top: 30px;
-            border-top: 2px solid #eee;
-            display: none;
+
+        .success {
+            background: #d1fae5;
+            color: #065f46;
+            border-left-color: #10b981;
         }
-        .payment-section.show {
-            display: block;
-        }
-        #card-element {
-            border: 1px solid #ddd;
-            border-radius: 8px;
+
+        .info {
+            background: #dbeafe;
+            color: #0c2340;
             padding: 12px;
-            margin-bottom: 20px;
+            border-radius: 8px;
+            font-size: 13px;
+            margin-bottom: 16px;
+            border-left: 4px solid #3b82f6;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        .stat {
+            background: white;
+            padding: 16px;
+            border-radius: 10px;
+            text-align: center;
+            border: 2px solid #e0e0e0;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #667eea;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 4px;
+        }
+
+        footer {
+            text-align: center;
+            color: white;
+            padding: 20px;
+            font-size: 12px;
+            opacity: 0.8;
         }
     </style>
 </head>
 <body>
-    <div class="container">
+    <header>
         <h1>🤖 AI Feedback Analyzer</h1>
-        <p class="subtitle">Analiza feedback con inteligencia artificial - Powered by OpenAI & Stripe</p>
-        
-        <div class="error" id="error"></div>
-        
-        <form id="feedbackForm">
-            <div class="form-group">
-                <label for="feedback">Envía tu feedback:</label>
-                <textarea id="feedback" placeholder="Escribe aquí tu feedback o comentario..." required></textarea>
+        <p>Analiza feedback con inteligencia artificial avanzada</p>
+        <span class="badge">v2.0 - Potenciado por OpenAI</span>
+    </header>
+
+    <div class="container">
+        <div class="card">
+            <div class="error" id="error"></div>
+
+            <form id="feedbackForm">
+                <div class="info">
+                    ℹ️ Escribe tu feedback y nuestra IA lo analizará para detectar sentimiento, calidad y sugerencias.
+                </div>
+
+                <div class="form-group">
+                    <label for="feedback">Tu Feedback:</label>
+                    <textarea id="feedback" placeholder="Escribe aquí tu comentario o feedback..." required></textarea>
+                </div>
+
+                <div class="button-group">
+                    <button type="submit" class="btn-primary">🚀 Analizar con IA</button>
+                </div>
+            </form>
+
+            <div id="loading" class="loading">
+                <div class="spinner"></div>
+                <p>Analizando tu feedback...</p>
             </div>
-            
-            <div class="button-group">
-                <button type="submit" class="btn-analyze">📊 Analizar con IA</button>
+
+            <div id="result" class="result">
+                <h3>📊 Resultado del Análisis</h3>
+                <div id="resultText"></div>
             </div>
-        </form>
-        
-        <div class="loading" id="loading">
-            <div class="spinner"></div>
-            <p>Analizando tu feedback...</p>
-        </div>
-        
-        <div class="result" id="result">
-            <h3>📈 Análisis Completado</h3>
-            <p id="resultText"></p>
-        </div>
-        
-        <div class="payment-section" id="paymentSection">
-            <h3 style="color: #333; margin-bottom: 15px;">💳 Procesar Pago</h3>
-            <label for="email">Email:</label>
-            <input type="email" id="email" placeholder="tu@email.com" required>
-            
-            <label style="margin-top: 15px;">Tarjeta de Crédito:</label>
-            <div id="card-element"></div>
-            
-            <label for="amount">Monto (USD):</label>
-            <input type="number" id="amount" placeholder="10.00" min="1" step="0.01" value="9.99" required>
-            
-            <button type="button" class="btn-pay" onclick="processPayment()">✅ Pagar</button>
         </div>
     </div>
-    
+
+    <footer>
+        <p>© 2026 AI Feedback Analyzer | Análisis Inteligente Avanzado</p>
+    </footer>
+
     <script>
-        const stripe = Stripe('pk_test_YOUR_STRIPE_KEY_HERE');
-        const elements = stripe.elements();
-        const cardElement = elements.create('card');
-        cardElement.mount('#card-element');
-        
+        const API_URL = '/api';
+
         document.getElementById('feedbackForm').addEventListener('submit', async (e) => {
             e.preventDefault();
+            
             const feedback = document.getElementById('feedback').value;
             const loading = document.getElementById('loading');
             const result = document.getElementById('result');
             const error = document.getElementById('error');
-            
-            error.classList.remove('show');
+            const resultText = document.getElementById('resultText');
+
+            error.classList.remove('show', 'success');
             loading.classList.add('show');
             result.classList.remove('show');
-            
+
             try {
-                const response = await fetch('/api/analyze', {
+                const response = await fetch(`${API_URL}/analyze`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        feedback: feedback,
-                        api_key: 'sk-proj-0HstMa562EvPoCYsPdqqGQkfld'
-                    })
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-API-Key': 'sk-proj-0HstMa562EvPoCYsPdqqGQkfld'
+                    },
+                    body: JSON.stringify({ text: feedback })
                 });
-                
+
                 const data = await response.json();
                 loading.classList.remove('show');
-                
+
                 if (response.ok) {
-                    document.getElementById('resultText').textContent = data.analysis || 'Análisis completado';
+                    const sentiment = data.sentiment || 'neutral';
+                    const score = data.score || 5;
+                    const suggestions = (data.suggestions || []).join(', ');
+
+                    resultText.innerHTML = `
+                        <p><strong>Sentimiento:</strong> <span class="sentiment ${sentiment}">😊 ${sentiment.toUpperCase()}</span></p>
+                        <p><strong>Puntuación:</strong> ${score}/10</p>
+                        ${suggestions ? `<p><strong>Sugerencias:</strong> ${suggestions}</p>` : ''}
+                        <p><strong>Resumen:</strong> ${data.summary || 'Análisis completado'}</p>
+                    `;
                     result.classList.add('show');
-                    document.getElementById('paymentSection').classList.add('show');
+                    document.getElementById('feedback').value = '';
                 } else {
                     error.textContent = data.detail || 'Error en el análisis';
                     error.classList.add('show');
@@ -257,56 +400,19 @@
                 error.classList.add('show');
             }
         });
-        
-        async function processPayment() {
-            const email = document.getElementById('email').value;
-            const amount = Math.round(parseFloat(document.getElementById('amount').value) * 100);
-            const error = document.getElementById('error');
-            
-            if (!email || !amount) {
-                error.textContent = 'Por favor completa todos los campos';
-                error.classList.add('show');
-                return;
-            }
-            
+
+        // Verificar estado de la API
+        async function checkApiStatus() {
             try {
-                const response = await fetch('/api/payment/create-intent', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        amount: amount,
-                        email: email,
-                        description: 'AI Feedback Analysis'
-                    })
-                });
-                
-                const paymentData = await response.json();
-                
-                if (response.ok) {
-                    const { error: stripeError, paymentIntent } = await stripe.confirmCardPayment(
-                        paymentData.clientSecret,
-                        { payment_method: { card: cardElement, billing_details: { email: email } } }
-                    );
-                    
-                    if (stripeError) {
-                        error.textContent = 'Error en pago: ' + stripeError.message;
-                        error.classList.add('show');
-                    } else if (paymentIntent.status === 'succeeded') {
-                        error.textContent = '✅ ¡Pago exitoso! Gracias por tu compra.';
-                        error.style.background = '#dfd';
-                        error.style.color = '#390';
-                        error.classList.add('show');
-                        setTimeout(() => location.reload(), 3000);
-                    }
-                } else {
-                    error.textContent = 'Error: ' + paymentData.detail;
-                    error.classList.add('show');
-                }
+                const response = await fetch(`${API_URL}/status`);
+                const data = await response.json();
+                console.log('✅ API Status:', data.message);
             } catch (err) {
-                error.textContent = 'Error: ' + err.message;
-                error.classList.add('show');
+                console.error('⚠️ API Error:', err);
             }
         }
+
+        checkApiStatus();
     </script>
 </body>
 </html>
