@@ -253,3 +253,42 @@ def profile(user: User = Depends(verify_api_key)):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+    # Stripe Integration
+import stripe
+
+STRIPE_API_KEY = os.getenv('STRIPE_API_KEY', 'sk_test_PLACEHOLDER')
+stripe.api_key = STRIPE_API_KEY
+
+class PaymentRequest(BaseModel):
+    amount: int  # en centavos
+    email: str
+    description: str = "AI Feedback Analysis"
+
+@app.post('/api/payment/create-intent')
+def create_payment_intent(payment: PaymentRequest):
+    try:
+        intent = stripe.PaymentIntent.create(
+            amount=payment.amount,
+            currency='usd',
+            receipt_email=payment.email,
+            metadata={'description': payment.description}
+        )
+        return {
+            'clientSecret': intent.client_secret,
+            'paymentIntentId': intent.id
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get('/api/payment/status/{payment_intent_id}')
+def check_payment_status(payment_intent_id: str):
+    try:
+        intent = stripe.PaymentIntent.retrieve(payment_intent_id)
+        return {
+            'status': intent.status,
+            'amount': intent.amount,
+            'amount_received': intent.amount_received
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
