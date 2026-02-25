@@ -1,9 +1,9 @@
 from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 import openai
 from dotenv import load_dotenv
@@ -12,13 +12,17 @@ import hashlib
 from sqlalchemy import create_engine, Column, String, DateTime, Integer
 from sqlalchemy.orm import declarative_base, Session, sessionmaker
 import json
+from functools import lru_cache
+from typing import Dict, Optional
+import time
+import stripe
 
 load_dotenv()
-
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./feedback.db")
+STRIPE_API_KEY = os.getenv('STRIPE_API_KEY', 'sk_test_PLACEHOLDER')
 
-app = FastAPI(title="AI Feedback Analyzer")
+app = FastAPI(title="AI Feedback Analyzer v2.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -28,12 +32,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Caché de resultados para optimizar
+analysis_cache: Dict[str, tuple] = {}
+CACHE_EXPIRY = 3600  # 1 hora
+
+# Rate limiting
+rate_limit_tracker: Dict[str, list] = {}
+REQUESTS_PER_MINUTE = 30
+
 # Base de datos
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 openai.api_key = OPENAI_API_KEY
+stripe.api_key = STRIPE_API_KEY
 
 # MODELOS BD
 class User(Base):
@@ -71,6 +84,11 @@ class UserLogin(BaseModel):
     email: str
     password: str
 
+class PaymentRequest(BaseModel):
+    amount: int
+    email: str
+    description: str = "AI Feedback Analysis"
+
 # FUNCIONES
 def get_db():
     db = SessionLocal()
@@ -85,29 +103,60 @@ def hash_pwd(pwd):
 def gen_api_key():
     return "sk_" + hashlib.sha256(str(uuid.uuid4()).encode()).hexdigest()[:40]
 
+def check_rate_limit(api_key: str) -> bool:
+    """Implementa rate limiting"""
+    current_time = time.time()
+    if api_key not in rate_limit_tracker:
+        rate_limit_tracker[api_key] = []
+    
+    # Limpiar timestamps antiguos (> 1 minuto)
+    rate_limit_tracker[api_key] = [
+        ts for ts in rate_limit_tracker[api_key] 
+        if current_time - ts < 60
+    ]
+    
+    if len(rate_limit_tracker[api_key]) >= REQUESTS_PER_MINUTE:
+        return False
+    
+    rate_limit_tracker[api_key].append(current_time)
+    return True
+
+def get_cache_key(text: str) -> str:
+    """Genera clave de caché"""
+    return hashlib.md5(text.encode()).hexdigest()
+
 def verify_api_key(x_api_key: str = Header(None), db: Session = Depends(get_db)):
     if not x_api_key:
         raise HTTPException(status_code=401, detail="API Key requerida")
+    
+    if not check_rate_limit(x_api_key):
+        raise HTTPException(status_code=429, detail="Rate limit exceeded. Máximo 30 requests/minuto")
+    
     user = db.query(User).filter(User.api_key == x_api_key).first()
     if not user:
         raise HTTPException(status_code=401, detail="API Key inválida")
     if user.requests_used >= user.requests_limit:
-        raise HTTPException(status_code=429, detail="Límite alcanzado")
+        raise HTTPException(status_code=429, detail="Límite de requests alcanzado")
     return user
 
 def analyze_with_openai(text: str):
-    """Analiza feedback con GPT"""
+    """Analiza feedback con GPT - Optimizado"""
+    # Verificar caché primero
+    cache_key = get_cache_key(text)
+    if cache_key in analysis_cache:
+        cached_result, expiry_time = analysis_cache[cache_key]
+        if time.time() < expiry_time:
+            return cached_result
+    
     prompt = f"""Analiza este feedback:
 "{text}"
-
 Responde en JSON válido:
 {{
-    "sentiment": "positivo" o "negativo" o "neutral",
-    "score": 1-10,
-    "suggestions": ["sugerencia 1", "sugerencia 2"],
-    "summary": "resumen corto"
+ "sentiment": "positivo" o "negativo" o "neutral",
+ "score": 1-10,
+ "suggestions": ["sugerencia 1", "sugerencia 2"],
+ "summary": "resumen corto"
 }}
-
 Solo JSON."""
     
     try:
@@ -115,9 +164,13 @@ Solo JSON."""
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,
-            max_tokens=300
+            max_tokens=300,
+            timeout=30
         )
-        return response.choices[0].message.content
+        result = response.choices[0].message.content
+        # Guardar en caché
+        analysis_cache[cache_key] = (result, time.time() + CACHE_EXPIRY)
+        return result
     except Exception as e:
         return '{"sentiment": "neutral", "score": 5, "suggestions": ["Error"], "summary": "Error procesando"}'
 
@@ -128,7 +181,7 @@ def root():
 
 @app.get("/api/status")
 def status():
-    return {"status": "ok", "message": "🤖 AI Feedback Analyzer API v1.0"}
+    return {"status": "ok", "message": "🤖 AI Feedback Analyzer API v2.0", "version": "2.0"}
 
 @app.post("/api/auth/register")
 def register(user: UserRegister, db: Session = Depends(get_db)):
@@ -177,7 +230,10 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
 @app.post("/api/analyze")
 def analyze(req: FeedbackRequest, user: User = Depends(verify_api_key), db: Session = Depends(get_db)):
     if not req.text or len(req.text) < 5:
-        raise HTTPException(status_code=400, detail="Texto muy corto")
+        raise HTTPException(status_code=400, detail="Texto muy corto (mínimo 5 caracteres)")
+    
+    if len(req.text) > 5000:
+        raise HTTPException(status_code=400, detail="Texto muy largo (máximo 5000 caracteres)")
     
     result_str = analyze_with_openai(req.text)
     
@@ -250,21 +306,6 @@ def profile(user: User = Depends(verify_api_key)):
         "requests_limit": user.requests_limit
     }
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
-
-    # Stripe Integration
-import stripe
-
-STRIPE_API_KEY = os.getenv('STRIPE_API_KEY', 'sk_test_PLACEHOLDER')
-stripe.api_key = STRIPE_API_KEY
-
-class PaymentRequest(BaseModel):
-    amount: int  # en centavos
-    email: str
-    description: str = "AI Feedback Analysis"
-
 @app.post('/api/payment/create-intent')
 def create_payment_intent(payment: PaymentRequest):
     try:
@@ -292,6 +333,7 @@ def check_payment_status(payment_intent_id: str):
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+<<<<<<< HEAD
 import os
 from flask import Flask
 
@@ -304,3 +346,13 @@ def hello():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+=======
+
+@app.get("/api/health")
+def health_check():
+    return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000, workers=4)
+>>>>>>> 15018256b5eac04f96868a9d266c3091629a84a8
