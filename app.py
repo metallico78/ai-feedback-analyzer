@@ -292,3 +292,15 @@ def check_payment_status(payment_intent_id: str):
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+import os
+from flask import Flask
+
+app = Flask(__name__)
+
+@app.route("/")
+def hello():
+    return "Hola desde ai-feedback-analyzer!"
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
