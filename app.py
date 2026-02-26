@@ -4,7 +4,23 @@ import uvicorn
 
 app = FastAPI()
 
-@app.get("/")
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
+
+app = FastAPI()
+
+@app.get("/", response_class=HTMLResponse)
+async def home(request: Request):
+    return """
+    <html>
+        <head><title>AI Feedback Analyzer</title></head>
+        <body>
+            <h1>Bienvenido a AI Feedback Analyzer</h1>
+            <p>Tu aplicación ya está corriendo en Railway 🚀</p>
+        </body>
+    </html>
+    """
+
 def read_root():
     return {"message": "Hola desde ai-feedback-analyzer con FastAPI!"}
 
