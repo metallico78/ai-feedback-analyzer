@@ -347,7 +347,6 @@ def check_payment_status(payment_intent_id: str):
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-<<<<<<< HEAD
 import os
 from flask import Flask
 
@@ -360,7 +359,6 @@ def hello():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-=======
 
 @app.get("/api/health")
 def health_check():
@@ -369,4 +367,3 @@ def health_check():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000, workers=4)
->>>>>>> 15018256b5eac04f96868a9d266c3091629a84a8
