@@ -1,3 +1,9 @@
+import os
+import uvicorn
+from fastapi import FastAPI
+
+app = FastAPI(title="AI Feedback Analyzer v2.0")
+
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
@@ -9,10 +15,6 @@ templates = Jinja2Templates(directory="templates")
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
-
-import os
-from fastapi import FastAPI
-import uvicorn
 
 app = FastAPI()
 
