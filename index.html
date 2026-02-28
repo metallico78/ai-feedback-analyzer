@@ -416,3 +416,20 @@
     </script>
 </body>
 </html>
+<section>
+    <h2>Planes Premium</h2>
+    <button onclick="startPayment(500)">Comprar 5 análisis ($5)</button>
+    <button onclick="startPayment(2000)">Plan ilimitado ($20)</button>
+</section>
+
+<script>
+async function startPayment(amount) {
+    const response = await fetch("/api/payment/create-intent", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({amount: amount, email: "cliente@ejemplo.com"})
+    });
+    const data = await response.json();
+    alert("Inicia tu pago con Stripe, clientSecret: " + data.clientSecret);
+}
+</script>
