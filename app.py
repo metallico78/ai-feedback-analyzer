@@ -1,25 +1,29 @@
 import os
 import uvicorn
-from fastapi import FastAPI
-
-app = FastAPI(title="AI Feedback Analyzer v2.0")
-
+from fastapi import FastAPI, Request
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
-from fastapi import Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi import HTTPException, Depends, Header
+# ... resto de imports y lógica de tu API
 
+
+# Crear la aplicación FastAPI
+app = FastAPI(title="AI Feedback Analyzer v2.0")
+
+# Montar carpeta de archivos estáticos (CSS, JS, imágenes)
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Configurar carpeta de templates (HTML)
 templates = Jinja2Templates(directory="templates")
 
+# Ruta principal que devuelve la página HTML
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
-app = FastAPI()
-
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI
 
 app = FastAPI()
 
