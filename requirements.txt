@@ -7,3 +7,4 @@ pydantic==2.5.0
 stripe==7.0.0
 flask
 gunicorn==22.0.0
+jinja2
