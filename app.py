@@ -1,88 +1,37 @@
 import os
 import uvicorn
-from fastapi import FastAPI, Request
-from fastapi.templating import Jinja2Templates
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi import HTTPException, Depends, Header
-# ... resto de imports y lógica de tu API
-
-
-# Crear la aplicación FastAPI
-app = FastAPI(title="AI Feedback Analyzer v2.0")
-
-# Montar carpeta de archivos estáticos (CSS, JS, imágenes)
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-# Configurar carpeta de templates (HTML)
-templates = Jinja2Templates(directory="templates")
-
-# Ruta principal que devuelve la página HTML
-@app.get("/", response_class=HTMLResponse)
-async def home(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
-
-from fastapi import FastAPI
-
-app = FastAPI()
-
-@app.get("/", response_class=HTMLResponse)
-async def home(request: Request):
-    return """
-    <html>
-        <head><title>AI Feedback Analyzer</title></head>
-        <body>
-            <h1>Bienvenido a AI Feedback Analyzer</h1>
-            <p>Tu aplicación ya está corriendo en Railway 🚀</p>
-        </body>
-    </html>
-    """
-
-def read_root():
-    return {"message": "Hola desde ai-feedback-analyzer con FastAPI!"}
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
-from fastapi.templating import Jinja2Templates
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
-from fastapi import Request
-
-app.mount("/static", StaticFiles(directory="static"), name="static")
-templates = Jinja2Templates(directory="templates")
-
-@app.get("/", response_class=HTMLResponse)
-async def home(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
-
-from fastapi import FastAPI, HTTPException, Depends, Header
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel
-from datetime import datetime, timedelta
-import os
-import openai
-from dotenv import load_dotenv
+import json
 import uuid
 import hashlib
-from sqlalchemy import create_engine, Column, String, DateTime, Integer
-from sqlalchemy.orm import declarative_base, Session, sessionmaker
-import json
-from functools import lru_cache
-from typing import Dict, Optional
 import time
 import stripe
+import openai
+from datetime import datetime
+from dotenv import load_dotenv
+from typing import Dict
+from fastapi import FastAPI, Request, HTTPException, Depends, Header
+from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from sqlalchemy import create_engine, Column, String, DateTime, Integer
+from sqlalchemy.orm import declarative_base, Session, sessionmaker
 
+# Cargar variables de entorno
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./feedback.db")
-STRIPE_API_KEY = os.getenv('STRIPE_API_KEY', 'sk_test_PLACEHOLDER')
+STRIPE_API_KEY = os.getenv("STRIPE_API_KEY", "sk_test_PLACEHOLDER")
 
+# Configuración de FastAPI
 app = FastAPI(title="AI Feedback Analyzer v2.0")
 
+# Archivos estáticos y templates
+app.mount("/static", StaticFiles(directory="static"), name="static")
+templates = Jinja2Templates(directory="templates")
+
+# Middleware CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -91,23 +40,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Caché de resultados para optimizar
-analysis_cache: Dict[str, tuple] = {}
-CACHE_EXPIRY = 3600  # 1 hora
-
-# Rate limiting
-rate_limit_tracker: Dict[str, list] = {}
-REQUESTS_PER_MINUTE = 30
+# Configuración de OpenAI y Stripe
+openai.api_key = OPENAI_API_KEY
+stripe.api_key = STRIPE_API_KEY
 
 # Base de datos
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-openai.api_key = OPENAI_API_KEY
-stripe.api_key = STRIPE_API_KEY
-
-# MODELOS BD
+# Modelos BD
 class User(Base):
     __tablename__ = "users"
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -131,7 +73,7 @@ class Analysis(Base):
 
 Base.metadata.create_all(bind=engine)
 
-# ESQUEMAS
+# Esquemas Pydantic
 class FeedbackRequest(BaseModel):
     text: str
 
@@ -148,7 +90,7 @@ class PaymentRequest(BaseModel):
     email: str
     description: str = "AI Feedback Analysis"
 
-# FUNCIONES
+# Utilidades
 def get_db():
     db = SessionLocal()
     try:
@@ -162,35 +104,30 @@ def hash_pwd(pwd):
 def gen_api_key():
     return "sk_" + hashlib.sha256(str(uuid.uuid4()).encode()).hexdigest()[:40]
 
+# Rate limiting y caché
+analysis_cache: Dict[str, tuple] = {}
+CACHE_EXPIRY = 3600
+rate_limit_tracker: Dict[str, list] = {}
+REQUESTS_PER_MINUTE = 30
+
 def check_rate_limit(api_key: str) -> bool:
-    """Implementa rate limiting"""
     current_time = time.time()
     if api_key not in rate_limit_tracker:
         rate_limit_tracker[api_key] = []
-    
-    # Limpiar timestamps antiguos (> 1 minuto)
-    rate_limit_tracker[api_key] = [
-        ts for ts in rate_limit_tracker[api_key] 
-        if current_time - ts < 60
-    ]
-    
+    rate_limit_tracker[api_key] = [ts for ts in rate_limit_tracker[api_key] if current_time - ts < 60]
     if len(rate_limit_tracker[api_key]) >= REQUESTS_PER_MINUTE:
         return False
-    
     rate_limit_tracker[api_key].append(current_time)
     return True
 
 def get_cache_key(text: str) -> str:
-    """Genera clave de caché"""
     return hashlib.md5(text.encode()).hexdigest()
 
 def verify_api_key(x_api_key: str = Header(None), db: Session = Depends(get_db)):
     if not x_api_key:
         raise HTTPException(status_code=401, detail="API Key requerida")
-    
     if not check_rate_limit(x_api_key):
         raise HTTPException(status_code=429, detail="Rate limit exceeded. Máximo 30 requests/minuto")
-    
     user = db.query(User).filter(User.api_key == x_api_key).first()
     if not user:
         raise HTTPException(status_code=401, detail="API Key inválida")
@@ -199,14 +136,11 @@ def verify_api_key(x_api_key: str = Header(None), db: Session = Depends(get_db))
     return user
 
 def analyze_with_openai(text: str):
-    """Analiza feedback con GPT - Optimizado"""
-    # Verificar caché primero
     cache_key = get_cache_key(text)
     if cache_key in analysis_cache:
         cached_result, expiry_time = analysis_cache[cache_key]
         if time.time() < expiry_time:
             return cached_result
-    
     prompt = f"""Analiza este feedback:
 "{text}"
 Responde en JSON válido:
@@ -217,7 +151,6 @@ Responde en JSON válido:
  "summary": "resumen corto"
 }}
 Solo JSON."""
-    
     try:
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
@@ -227,16 +160,15 @@ Solo JSON."""
             timeout=30
         )
         result = response.choices[0].message.content
-        # Guardar en caché
         analysis_cache[cache_key] = (result, time.time() + CACHE_EXPIRY)
         return result
-    except Exception as e:
+    except Exception:
         return '{"sentiment": "neutral", "score": 5, "suggestions": ["Error"], "summary": "Error procesando"}'
 
-# RUTAS
-@app.get("/")
-def root():
-    return FileResponse("index.html")
+# Rutas
+@app.get("/", response_class=HTMLResponse)
+async def home(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
 
 @app.get("/api/status")
 def status():
@@ -246,10 +178,8 @@ def status():
 def register(user: UserRegister, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == user.email).first():
         raise HTTPException(status_code=400, detail="Email existe")
-    
     user_id = str(uuid.uuid4())
     api_key = gen_api_key()
-    
     new_user = User(
         id=user_id,
         email=user.email,
@@ -259,7 +189,6 @@ def register(user: UserRegister, db: Session = Depends(get_db)):
     )
     db.add(new_user)
     db.commit()
-    
     return {
         "success": True,
         "id": user_id,
@@ -272,10 +201,8 @@ def register(user: UserRegister, db: Session = Depends(get_db)):
 @app.post("/api/auth/login")
 def login(user: UserLogin, db: Session = Depends(get_db)):
     db_user = db.query(User).filter(User.email == user.email).first()
-    
     if not db_user or db_user.password_hash != hash_pwd(user.password):
         raise HTTPException(status_code=401, detail="Email o contraseña inválidos")
-    
     return {
         "success": True,
         "id": db_user.id,
@@ -290,17 +217,13 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
 def analyze(req: FeedbackRequest, user: User = Depends(verify_api_key), db: Session = Depends(get_db)):
     if not req.text or len(req.text) < 5:
         raise HTTPException(status_code=400, detail="Texto muy corto (mínimo 5 caracteres)")
-    
     if len(req.text) > 5000:
         raise HTTPException(status_code=400, detail="Texto muy largo (máximo 5000 caracteres)")
-    
     result_str = analyze_with_openai(req.text)
-    
     try:
         result = json.loads(result_str)
     except:
         result = {"sentiment": "neutral", "score": 5, "suggestions": [], "summary": "Error"}
-    
     analysis_id = str(uuid.uuid4())
     analysis = Analysis(
         id=analysis_id,
@@ -313,7 +236,6 @@ def analyze(req: FeedbackRequest, user: User = Depends(verify_api_key), db: Sess
     db.add(analysis)
     user.requests_used += 1
     db.commit()
-    
     return {
         "success": True,
         "id": analysis_id,
@@ -321,82 +243,3 @@ def analyze(req: FeedbackRequest, user: User = Depends(verify_api_key), db: Sess
         "score": result.get("score"),
         "suggestions": result.get("suggestions"),
         "summary": result.get("summary")
-    }
-
-@app.get("/api/analytics")
-def analytics(user: User = Depends(verify_api_key), db: Session = Depends(get_db)):
-    analyses = db.query(Analysis).filter(Analysis.user_id == user.id).all()
-    
-    total = len(analyses)
-    if total == 0:
-        return {
-            "total": 0,
-            "positive": 0,
-            "negative": 0,
-            "neutral": 0,
-            "average": 0,
-            "requests_used": user.requests_used,
-            "requests_limit": user.requests_limit
-        }
-    
-    positive = len([a for a in analyses if "positiv" in a.sentiment.lower()])
-    negative = len([a for a in analyses if "negativ" in a.sentiment.lower()])
-    neutral = len([a for a in analyses if "neutral" in a.sentiment.lower()])
-    avg = sum([a.score for a in analyses]) / total
-    
-    return {
-        "total": total,
-        "positive": positive,
-        "negative": negative,
-        "neutral": neutral,
-        "average": round(avg, 2),
-        "requests_used": user.requests_used,
-        "requests_limit": user.requests_limit
-    }
-
-@app.get("/api/user/profile")
-def profile(user: User = Depends(verify_api_key)):
-    return {
-        "id": user.id,
-        "email": user.email,
-        "api_key": user.api_key,
-        "plan": user.plan,
-        "requests_used": user.requests_used,
-        "requests_limit": user.requests_limit
-    }
-
-@app.post('/api/payment/create-intent')
-def create_payment_intent(payment: PaymentRequest):
-    try:
-        intent = stripe.PaymentIntent.create(
-            amount=payment.amount,
-            currency='usd',
-            receipt_email=payment.email,
-            metadata={'description': payment.description}
-        )
-        return {
-            'clientSecret': intent.client_secret,
-            'paymentIntentId': intent.id
-        }
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-@app.get('/api/payment/status/{payment_intent_id}')
-def check_payment_status(payment_intent_id: str):
-    try:
-        intent = stripe.PaymentIntent.retrieve(payment_intent_id)
-        return {
-            'status': intent.status,
-            'amount': intent.amount,
-            'amount_received': intent.amount_received
-        }
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-@app.get("/api/health")
-def health_check():
-    return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000, workers=4)
