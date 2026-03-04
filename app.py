@@ -243,3 +243,4 @@ def analyze(req: FeedbackRequest, user: User = Depends(verify_api_key), db: Sess
         "score": result.get("score"),
         "suggestions": result.get("suggestions"),
         "summary": result.get("summary")
+}
